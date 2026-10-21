@@ -65,9 +65,8 @@ The first boot creates the admin account automatically. Data is stored in the `a
 
 Operator notes (env vars, backup/restore, upgrades, reverse proxy): [docs/operator.md](docs/operator.md).
 
-Pull requests into `dev` and `main` run on codevault: Go vet and tests, the
-linter, the frontend build, and the smoke. Locally, `make test` still runs
-the backend in Docker, and `make e2e` runs the smoke against a stack that is
+A version tag on GitHub publishes the images. Locally, `make test` runs the
+backend in Docker, and `make e2e` runs the smoke against a stack that is
 already up, reading the admin password and port from `deploy/.env`.
 
 ## The stack
