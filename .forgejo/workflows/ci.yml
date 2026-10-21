@@ -1,0 +1,436 @@
+# Check, then the install smoke. Images are published by publish.yml on a
+# version tag, not from this workflow.
+# Runs on Forgejo Actions (codevault.sh). Jobs run in a container there, so
+# Postgres is reached as the service name `postgres`, not localhost, and a
+# compose file cannot bind-mount this checkout. The smoke therefore builds
+# the api and the probe in the job and puts nginx in front of them.
+# Runs on PRs into dev/main. Feature-branch pushes and merges do not re-run.
+# Merging into main does not start a run: there is no push trigger.
+# The smoke runs on the way into dev. On the dev → main PR it runs again
+# only when that head is not the same tree as the one patch just merged, so
+# two patches tested apart are still tested together. A manual
+# workflow_dispatch still runs the smoke.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # No container health check. A health command that never passes
+    # fails the job in about a minute, before any step runs. The wait
+    # step below opens the port instead.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: argus
+          POSTGRES_PASSWORD: argus
+          POSTGRES_DB: argus_test
+    env:
+      ARGUS_TEST_DB_URL: postgres://argus:argus@postgres:5432/argus_test?sslmode=disable
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # Go comes from go.dev. setup-go pulls a GitHub release and turns on
+      # the actions cache, and this job was dying in about a minute on that
+      # step. Node uses the same setup-node pin Mnemo's green runs use,
+      # without the cache.
+      - name: Install Go 1.26.9
+        run: |
+          set -euo pipefail
+          echo "install-go" > /tmp/ci-stage
+          {
+            if ! command -v curl >/dev/null 2>&1; then
+              if [ "$(id -u)" -eq 0 ]; then
+                apt-get update
+                apt-get install -y --no-install-recommends curl ca-certificates
+              else
+                sudo apt-get update
+                sudo apt-get install -y --no-install-recommends curl ca-certificates
+              fi
+            fi
+            curl -fsSL --retry 5 --retry-delay 2 --max-time 180 \
+              -o /tmp/go.tgz https://go.dev/dl/go1.26.9.linux-amd64.tar.gz
+            if [ "$(id -u)" -eq 0 ]; then
+              rm -rf /usr/local/go
+              tar -C /usr/local -xzf /tmp/go.tgz
+            else
+              sudo rm -rf /usr/local/go
+              sudo tar -C /usr/local -xzf /tmp/go.tgz
+            fi
+            /usr/local/go/bin/go version
+          } > /tmp/ci.log 2>&1
+          echo /usr/local/go/bin >> "$GITHUB_PATH"
+      - name: Mark before Node
+        run: echo "setup-node" > /tmp/ci-stage
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Install golangci-lint v2.13.2
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          echo "install-lint" > /tmp/ci-stage
+          GOBIN="$RUNNER_TEMP/lint" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 > /tmp/ci-step.log 2>&1
+          cat /tmp/ci-step.log | tee -a /tmp/ci.log
+          echo "$RUNNER_TEMP/lint" >> "$GITHUB_PATH"
+      - name: Wait for postgres
+        run: |
+          set -euo pipefail
+          echo "wait-postgres" > /tmp/ci-stage
+          if ! command -v pg_isready >/dev/null 2>&1; then
+            if [ "$(id -u)" -eq 0 ]; then
+              apt-get update
+              apt-get install -y --no-install-recommends postgresql-client
+            else
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends postgresql-client
+            fi
+          fi
+          echo "Waiting for postgres..."
+          for i in $(seq 1 60); do
+            if pg_isready -h postgres -U argus -d argus_test; then
+              echo "postgres ready"
+              exit 0
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "postgres still not ready" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+      - name: Lint
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          echo "lint" > /tmp/ci-stage
+          golangci-lint run ./... > /tmp/ci-step.log 2>&1
+          cat /tmp/ci-step.log | tee -a /tmp/ci.log
+      - name: Vet and test
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          echo "test" > /tmp/ci-stage
+          {
+            go vet ./...
+            go test -p 1 -coverprofile=cover.out ./...
+            go tool cover -func=cover.out | tail -n 8
+          } > /tmp/ci-step.log 2>&1
+          cat /tmp/ci-step.log
+      # Advisory only: print known vulnerabilities; do not fail the job.
+      - name: Vulnerability check
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./... || true
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          echo "frontend" > /tmp/ci-stage
+          npm ci --no-audit --no-fund
+          npm run build
+          npm audit --audit-level=high --omit=dev || true
+      - name: Report a failure on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          TOKEN: ${{ github.token }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          node << 'EOF'
+          const fs = require('fs');
+          const stage = fs.existsSync('/tmp/ci-stage')
+            ? fs.readFileSync('/tmp/ci-stage', 'utf8').trim()
+            : 'before any step';
+          let log = '';
+          for (const p of ['/tmp/ci.log', '/tmp/ci-step.log', '/tmp/argus-api.log', '/tmp/argus-probe.log', '/tmp/argus-nginx-error.log']) {
+            if (fs.existsSync(p)) log += fs.readFileSync(p, 'utf8');
+          }
+          const failed = log.split('\n').filter((line) => /--- FAIL:|FAIL\t|\.go:\d+:|panic:/.test(line)).join('\n');
+          log = (failed + '\n' + log.slice(-2000)).slice(-4000);
+          const body = ['CI failed after `' + stage + '`.', '', '```', log || '(no captured output)', '```'].join('\n');
+          const token = process.env.TOKEN;
+          const pr = process.env.PR;
+          if (!token || !pr) {
+            console.log('stage=' + stage);
+            console.log(log);
+            process.exit(0);
+          }
+          fetch(process.env.API + '/repos/' + process.env.REPO + '/issues/' + pr + '/comments', {
+            method: 'POST',
+            headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body }),
+          }).then(async (res) => {
+            console.log('comment status', res.status);
+            if (!res.ok) console.log((await res.text()).slice(0, 500));
+          }).catch((err) => console.log('comment failed', err.message));
+          EOF
+
+  # Cheap look at the dev → main head. A clean merge of one patch has the same
+  # tree as the patch tip, which already ran the smoke. Two patches merged on
+  # top of each other do not, so that head still runs.
+  e2e-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - id: decide
+        name: Decide whether this head still needs the smoke
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "${{ github.event_name }}" = "pull_request" ] \
+            && [ "${{ github.base_ref }}" = "main" ] \
+            && [ "${{ github.head_ref }}" = "dev" ]; then
+            set -- $(git rev-list --parents -n 1 HEAD)
+            if [ "$#" -eq 3 ] && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "$3^{tree}")" ]; then
+              run=false
+              echo "This head matches the patch already tested ($3). The smoke stays on that run."
+            else
+              echo "This head is more than that one patch. The smoke runs."
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    needs: [check, e2e-gate]
+    if: needs.e2e-gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: argus
+          POSTGRES_PASSWORD: argus
+          POSTGRES_DB: argus
+    env:
+      CGO_ENABLED: "0"
+      ARGUS_DB_HOST: postgres
+      ARGUS_DB_USER: argus
+      ARGUS_DB_PASSWORD: argus
+      ARGUS_DB_NAME: argus
+      ARGUS_ADMIN_EMAIL: admin@example.com
+      ARGUS_ADMIN_PASSWORD: ci-pipeline-admin-password
+      # 32 bytes, CI only. Not a key anyone installs with.
+      ARGUS_SECRET_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      ARGUS_LISTEN: :18080
+      ARGUS_PROBE_LISTEN: :18081
+      ARGUS_BASE_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install Go 1.26.9
+        run: |
+          set -euo pipefail
+          echo "install-go" > /tmp/ci-stage
+          {
+            if ! command -v curl >/dev/null 2>&1; then
+              if [ "$(id -u)" -eq 0 ]; then
+                apt-get update
+                apt-get install -y --no-install-recommends curl ca-certificates
+              else
+                sudo apt-get update
+                sudo apt-get install -y --no-install-recommends curl ca-certificates
+              fi
+            fi
+            curl -fsSL --retry 5 --retry-delay 2 --max-time 180 \
+              -o /tmp/go.tgz https://go.dev/dl/go1.26.9.linux-amd64.tar.gz
+            if [ "$(id -u)" -eq 0 ]; then
+              rm -rf /usr/local/go
+              tar -C /usr/local -xzf /tmp/go.tgz
+            else
+              sudo rm -rf /usr/local/go
+              sudo tar -C /usr/local -xzf /tmp/go.tgz
+            fi
+            /usr/local/go/bin/go version
+          } > /tmp/ci.log 2>&1
+          echo /usr/local/go/bin >> "$GITHUB_PATH"
+      - name: Mark before Node
+        run: echo "setup-node" > /tmp/ci-stage
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Install nginx and curl
+        run: |
+          set -euo pipefail
+          if command -v nginx >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+            exit 0
+          fi
+          if [ "$(id -u)" -eq 0 ]; then
+            apt-get update
+            apt-get install -y nginx curl
+          else
+            sudo apt-get update
+            sudo apt-get install -y nginx curl
+          fi
+      - name: Wait for postgres
+        run: |
+          set -euo pipefail
+          echo "wait-postgres" > /tmp/ci-stage
+          if ! command -v pg_isready >/dev/null 2>&1; then
+            if [ "$(id -u)" -eq 0 ]; then
+              apt-get update
+              apt-get install -y --no-install-recommends postgresql-client
+            else
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends postgresql-client
+            fi
+          fi
+          echo "Waiting for postgres..."
+          for i in $(seq 1 60); do
+            if pg_isready -h postgres -U argus -d argus; then
+              echo "postgres ready"
+              exit 0
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "postgres still not ready" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          echo "frontend" > /tmp/ci-stage
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Build api and probe
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          echo "build-api" > /tmp/ci-stage
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/argus" ./cmd/argus
+      - name: Start api, probe, and nginx, then smoke
+        run: |
+          set -euo pipefail
+          echo "smoke" > /tmp/ci-stage
+          dump() {
+            echo "=== api ==="
+            cat /tmp/argus-api.log 2>/dev/null || true
+            echo "=== probe ==="
+            cat /tmp/argus-probe.log 2>/dev/null || true
+            echo "=== nginx ==="
+            cat /tmp/argus-nginx-error.log 2>/dev/null || true
+          }
+          trap 'status=$?; if [ "$status" -ne 0 ]; then dump; fi; exit "$status"' EXIT
+
+          "$RUNNER_TEMP/argus" api >/tmp/argus-api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:18080/api/health && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:18080/api/health
+
+          "$RUNNER_TEMP/argus" probe >/tmp/argus-probe.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:18081/health && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:18081/health
+          # Check-now answers 503 until the probe has written a heartbeat.
+          # Key order in the JSON is not fixed, so match the boolean itself.
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18080/api/health | grep -q '"ok":true'; then
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:18080/api/health | grep -q '"ok":true'
+
+          mkdir -p /tmp/nginx-client /tmp/nginx-proxy
+          cat > /tmp/argus-nginx.conf <<EOF
+          worker_processes 1;
+          error_log /tmp/argus-nginx-error.log;
+          pid /tmp/argus-nginx.pid;
+          events { worker_connections 128; }
+          http {
+            include /etc/nginx/mime.types;
+            default_type application/octet-stream;
+            access_log /tmp/argus-nginx-access.log;
+            client_max_body_size 3m;
+            client_body_temp_path /tmp/nginx-client;
+            proxy_temp_path /tmp/nginx-proxy;
+            server {
+              listen 127.0.0.1:8080;
+              root ${GITHUB_WORKSPACE}/frontend/dist;
+              index index.html;
+              location /api/ {
+                proxy_pass http://127.0.0.1:18080;
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+              }
+              location / {
+                try_files \$uri /index.html;
+              }
+            }
+          }
+          EOF
+          nginx -c /tmp/argus-nginx.conf
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/api/health && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8080/api/health
+
+          ./tests/e2e/smoke.sh
+      - name: Report a failure on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          TOKEN: ${{ github.token }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          node << 'EOF'
+          const fs = require('fs');
+          const stage = fs.existsSync('/tmp/ci-stage')
+            ? fs.readFileSync('/tmp/ci-stage', 'utf8').trim()
+            : 'before any step';
+          let log = '';
+          for (const p of ['/tmp/ci.log', '/tmp/ci-step.log', '/tmp/argus-api.log', '/tmp/argus-probe.log', '/tmp/argus-nginx-error.log']) {
+            if (fs.existsSync(p)) log += '\n== ' + p + ' ==\n' + fs.readFileSync(p, 'utf8');
+          }
+          const failed = log.split('\n').filter((line) => /--- FAIL:|FAIL\t|\.go:\d+:|panic:/.test(line)).join('\n');
+          log = (failed + '\n' + log.slice(-2000)).slice(-4000);
+          const body = ['CI failed after `' + stage + '`.', '', '```', log || '(no captured output)', '```'].join('\n');
+          const token = process.env.TOKEN;
+          const pr = process.env.PR;
+          if (!token || !pr) {
+            console.log('stage=' + stage);
+            console.log(log);
+            process.exit(0);
+          }
+          fetch(process.env.API + '/repos/' + process.env.REPO + '/issues/' + pr + '/comments', {
+            method: 'POST',
+            headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body }),
+          }).then(async (res) => {
+            console.log('comment status', res.status);
+            if (!res.ok) console.log((await res.text()).slice(0, 500));
+          }).catch((err) => console.log('comment failed', err.message));
+          EOF

@@ -1,0 +1,287 @@
+@import "tailwindcss";
+@import "uplot/dist/uPlot.min.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens: Graphite. Light is the default; .dark is the alternate.
+   Neutral greys with no tint carry the UI, one blue accent carries actions,
+   and status colour is spent only on status marks so red and green keep
+   their meaning. Every text colour clears 4.5:1 on the surfaces it sits on,
+   and the input border clears 3:1 (checked when the palette was set, 2.13.1). */
+:root {
+  --background: #f5f6f8;
+  --foreground: #111317;
+  --card: #ffffff;
+  --card-foreground: #111317;
+  --sidebar: #ffffff;
+  --muted: #eceef2;
+  --muted-foreground: #5c626c;
+  --border: #e1e4e8;
+  --border-soft: #eceef1;
+  --input: #858b94;
+  --primary: #1f5bd8;
+  --primary-foreground: #ffffff;
+  --ring: #1f5bd8;
+  --success: #137241;
+  --success-foreground: #ffffff;
+  --danger: #b82e27;
+  --danger-foreground: #ffffff;
+  --warning: #955905;
+  /* Series colour: the accent, so a healthy fleet is not a wall of green. */
+  --chart-line: #1f5bd8;
+  --chart-grid: #eceef1;
+  --chart-up: #137241;
+  --chart-down: #b82e27;
+  --radius: 12px;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.04);
+}
+
+.dark {
+  --background: #0c0d0f;
+  --foreground: #ececef;
+  --card: #15171a;
+  --card-foreground: #ececef;
+  --sidebar: #101114;
+  --muted: #212429;
+  --muted-foreground: #9ca1a9;
+  --border: #25282d;
+  --border-soft: #1d1f23;
+  --input: #6b717a;
+  --primary: #6c9dff;
+  --primary-foreground: #071430;
+  --ring: #6c9dff;
+  /* Status colours are light in the dark theme, so text on them is dark. */
+  --success: #4fd08f;
+  --success-foreground: #04210f;
+  --danger: #ff7d73;
+  --danger-foreground: #1c0503;
+  --warning: #f3b556;
+  --chart-line: #6c9dff;
+  --chart-grid: #1f2226;
+  --chart-up: #4fd08f;
+  --chart-down: #ff7d73;
+  --shadow-card: none;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-warning: var(--warning);
+  --radius-card: var(--radius);
+  --font-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: var(--font-sans);
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+/* A card: the default container for a block of content. */
+.surface {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1;
+}
+
+.font-brand {
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+/* The few large numbers on a page: tabular and tight. */
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.25s ease-out both;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+@keyframes chart-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.chart-draw-in {
+  animation: chart-reveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.stagger-in {
+  animation: stagger-in 0.28s ease-out both;
+}
+
+@keyframes flash-down {
+  from {
+    background-color: color-mix(in srgb, var(--danger) 16%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.flash-down {
+  animation: flash-down 0.9s ease-out;
+}
+
+@keyframes flash-up {
+  from {
+    background-color: color-mix(in srgb, var(--success) 14%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.flash-up {
+  animation: flash-up 0.9s ease-out;
+}
+
+@keyframes flash-slow {
+  from {
+    background-color: color-mix(in srgb, var(--warning) 16%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.flash-slow {
+  animation: flash-slow 0.9s ease-out;
+}
+
+@keyframes radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.radar-sweep {
+  transform-origin: 0 0;
+  animation: radar-sweep 10s linear infinite;
+}
+
+@keyframes login-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.login-draw {
+  stroke-dasharray: 1;
+  animation: login-draw 1.4s ease-out both;
+}
+
+.uplot {
+  font-family: inherit;
+}
+.uplot .u-legend {
+  display: none;
+}
+.u-cursor-x {
+  border-right: 1px dashed
+    color-mix(in srgb, var(--foreground) 28%, transparent) !important;
+}
+.u-cursor-y {
+  display: none;
+}
+.u-cursor-pt {
+  border-radius: 999px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .animate-pulse-dot,
+  .chart-draw-in,
+  .stagger-in,
+  .flash-down,
+  .flash-up,
+  .flash-slow,
+  .radar-sweep,
+  .login-draw {
+    animation: none !important;
+  }
+}

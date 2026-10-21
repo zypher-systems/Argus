@@ -1,0 +1,2040 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Argus API",
+    "version": "2.16.0",
+    "description": "Self-hosted uptime monitoring. Automation uses an API token (Settings \u2192 Access \u2192 API tokens) sent as `Authorization: Bearer <token>` or `X-Api-Token: <token>`. The browser UI uses a session cookie against the same endpoints.",
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "This install"
+    }
+  ],
+  "tags": [
+    {
+      "name": "monitors",
+      "description": "Create, inspect and operate monitors"
+    },
+    {
+      "name": "channels",
+      "description": "Notification destinations"
+    },
+    {
+      "name": "incidents",
+      "description": "Incidents and their updates"
+    },
+    {
+      "name": "status",
+      "description": "Public status pages, badges and feeds (no auth)"
+    },
+    {
+      "name": "reporting",
+      "description": "SLA reporting and the audit log"
+    },
+    {
+      "name": "system",
+      "description": "Health, metrics and instance identity"
+    },
+    {
+      "name": "data",
+      "description": "Backup and import"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "apiTokenHeader": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness and probe freshness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "probe": {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean"
+                        },
+                        "last_seen": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database unreachable"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Prometheus metrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Prometheus text format",
+            "content": {
+              "text/plain": {}
+            }
+          }
+        }
+      }
+    },
+    "/instance": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Instance id, version and edition",
+        "responses": {
+          "200": {
+            "description": "Instance identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "instance_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "edition": {
+                      "type": "string",
+                      "enum": [
+                        "community",
+                        "pro"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors": {
+      "get": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "List monitors with their current state",
+        "responses": {
+          "200": {
+            "description": "Monitors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Monitor"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Create a monitor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Monitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/monitors/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/MonitorId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Get one monitor",
+        "responses": {
+          "200": {
+            "description": "Monitor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Monitor"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Replace a monitor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Monitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Delete a monitor and its history",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/monitors/{id}/check": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/MonitorId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Run a check now and wait for the result",
+        "description": "Queues a check for the probe and waits up to the monitor's timeout plus five seconds. The result is not stored as a regular check.",
+        "responses": {
+          "200": {
+            "description": "Check finished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "latency_ms": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "applied": {
+                      "type": "boolean",
+                      "description": "False when the monitor is paused, so the result did not change its state"
+                    },
+                    "evidence": {
+                      "$ref": "#/components/schemas/CheckEvidence"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Groups are not probed"
+          },
+          "503": {
+            "description": "The probe is not running"
+          },
+          "504": {
+            "description": "The probe did not run the check in time"
+          }
+        }
+      }
+    },
+    "/monitors/test-run": {
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Run a transaction once without saving it",
+        "description": "Validates the body exactly as a save would and runs it from the API server, not from remote probes. With monitor_id, secrets sent blank use that monitor's stored values. Limited to 10 runs a minute per user.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MonitorInput"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "monitor_id": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run finished; success says whether it passed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "latency_ms": {
+                      "type": "number"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "$ref": "#/components/schemas/CheckEvidence"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid transaction, or not a transaction"
+          },
+          "403": {
+            "description": "Viewer role is read-only"
+          },
+          "429": {
+            "description": "Too many test runs"
+          }
+        }
+      }
+    },
+    "/monitors/quick": {
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Add monitors from a pasted list",
+        "description": "One monitor per line: a URL becomes an HTTP check, host:port a TCP check, and anything else is pinged. Blank lines and lines starting with # are ignored. Each line is validated like the full form; lines that fail or are already watched are skipped with a reason. At most 50 lines.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What was created and what was skipped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "created": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Monitor"
+                      }
+                    },
+                    "skipped": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "line": {
+                            "type": "integer"
+                          },
+                          "input": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nothing to add, or more than 50 lines"
+          }
+        }
+      }
+    },
+    "/schedule/preview": {
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Preview when a cron schedule fires",
+        "description": "Answers 200 with an error message for an invalid schedule, so a form can validate as it is typed.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "schedule": {
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The next three times, or an error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "next": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors/{id}/pause": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/MonitorId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Toggle paused",
+        "responses": {
+          "200": {
+            "description": "New state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors/{id}/mute": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/MonitorId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Silence alerts without pausing checks",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "minutes": {
+                    "type": "integer",
+                    "description": "1\u201310080 to mute for that long, 0 to unmute, -1 to mute until unmuted"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Muted state"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/monitors/{id}/ack": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/MonitorId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Acknowledge an outage",
+        "description": "Only a monitor that is currently down can be acknowledged.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "minutes": {
+                    "type": "integer",
+                    "description": "0 acknowledges until the monitor recovers; 1\u201310080 for a fixed window"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/monitors/{id}/clone": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/MonitorId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Duplicate a monitor",
+        "responses": {
+          "201": {
+            "description": "The copy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Monitor"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors/bulk": {
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Act on up to 250 monitors at once",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ids",
+                  "action"
+                ],
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "pause",
+                      "resume",
+                      "delete",
+                      "add_tag",
+                      "add_realm",
+                      "attach_channel"
+                    ]
+                  },
+                  "tag": {
+                    "type": "string"
+                  },
+                  "realm_id": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "channel_id": {
+                    "type": "integer",
+                    "format": "int64"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many rows changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "updated": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors/{id}/results": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/MonitorId"
+        },
+        {
+          "name": "range",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "24h",
+              "7d",
+              "30d",
+              "90d",
+              "1y"
+            ],
+            "default": "24h"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Latency and failures over a window",
+        "responses": {
+          "200": {
+            "description": "Raw checks or rollups, depending on the window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "granularity": {
+                      "type": "string",
+                      "enum": [
+                        "raw",
+                        "hourly",
+                        "daily"
+                      ]
+                    },
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors/{id}/events": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/MonitorId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "State changes for a monitor",
+        "responses": {
+          "200": {
+            "description": "Events"
+          }
+        }
+      }
+    },
+    "/channels": {
+      "get": {
+        "tags": [
+          "channels"
+        ],
+        "summary": "List notification channels",
+        "responses": {
+          "200": {
+            "description": "Channels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Channel"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "channels"
+        ],
+        "summary": "Create a channel",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Channel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/channels/{id}/test": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "channels"
+        ],
+        "summary": "Send a test notification",
+        "responses": {
+          "200": {
+            "description": "Delivered"
+          },
+          "502": {
+            "description": "The provider refused it"
+          }
+        }
+      }
+    },
+    "/incidents": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "List incidents",
+        "parameters": [
+          {
+            "name": "open",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incidents"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Open an incident by hand",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "impact": {
+                    "type": "string",
+                    "enum": [
+                      "minor",
+                      "major",
+                      "critical"
+                    ]
+                  },
+                  "monitor_id": {
+                    "type": "integer",
+                    "format": "int64",
+                    "nullable": true
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Opened"
+          }
+        }
+      }
+    },
+    "/sla": {
+      "get": {
+        "tags": [
+          "reporting"
+        ],
+        "summary": "Uptime against each monitor's SLO target",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "7d",
+                "30d",
+                "90d",
+                "365d"
+              ],
+              "default": "30d"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One row per monitor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SLARow"
+                  }
+                }
+              },
+              "text/csv": {}
+            }
+          }
+        }
+      }
+    },
+    "/audit": {
+      "get": {
+        "tags": [
+          "reporting"
+        ],
+        "summary": "Administrative actions",
+        "responses": {
+          "200": {
+            "description": "Audit entries"
+          }
+        }
+      }
+    },
+    "/status/{slug}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        }
+      ],
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Public status page as JSON",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/status/{slug}/badge.svg": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        },
+        {
+          "name": "label",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "default": "status"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Embeddable status badge",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "SVG",
+            "content": {
+              "image/svg+xml": {}
+            }
+          }
+        }
+      }
+    },
+    "/status/{slug}/uptime.svg": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        },
+        {
+          "name": "label",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "default": "uptime"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Embeddable 90-day uptime badge",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "SVG",
+            "content": {
+              "image/svg+xml": {}
+            }
+          }
+        }
+      }
+    },
+    "/status/{slug}/feed.xml": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        }
+      ],
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Incident history as RSS",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "RSS 2.0",
+            "content": {
+              "application/rss+xml": {}
+            }
+          }
+        }
+      }
+    },
+    "/status/{slug}/subscribe": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        }
+      ],
+      "post": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Subscribe to incident updates",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmation email sent"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/push/{token}": {
+      "parameters": [
+        {
+          "name": "token",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Heartbeat for a push monitor",
+        "description": "Call this from a cron or backup job. A push monitor goes down when it is not called within its interval.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "monitors"
+        ],
+        "summary": "Heartbeat for a push monitor",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded"
+          }
+        }
+      }
+    },
+    "/export": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Download a full backup",
+        "description": "Admin only, and recorded in the audit log. Contains every stored credential in clear; prefer the encrypted form.",
+        "responses": {
+          "200": {
+            "description": "Monitors and channels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Download a backup encrypted with a passphrase",
+        "description": "Admin only. scrypt and AES-256-GCM. Import it with the same passphrase.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "passphrase"
+                ],
+                "properties": {
+                  "passphrase": {
+                    "type": "string",
+                    "minLength": 12,
+                    "writeOnly": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Encrypted export (format argus-encrypted)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Passphrase shorter than 12 characters"
+          },
+          "403": {
+            "description": "Not an admin"
+          }
+        }
+      }
+    },
+    "/import": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Import an Argus export or an Uptime Kuma backup",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "argus",
+                      "kuma"
+                    ]
+                  },
+                  "data": {
+                    "type": "object",
+                    "description": "The export, plain or encrypted"
+                  },
+                  "passphrase": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Required when data is an encrypted export"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Counts of imported and skipped monitors"
+          },
+          "400": {
+            "description": "Unreadable file, or a missing or wrong passphrase"
+          }
+        }
+      }
+    },
+    "/onboarding": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Getting-started checklist state",
+        "description": "Each step is read from the data: monitors, channels, a delivered channel test, and status pages.",
+        "responses": {
+          "200": {
+            "description": "Checklist state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "monitors": {
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "type": "integer"
+                    },
+                    "status_pages": {
+                      "type": "integer"
+                    },
+                    "test_alert_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "When a channel test was last delivered"
+                    },
+                    "dismissed_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "smtp_ready": {
+                      "type": "boolean",
+                      "description": "Whether an email channel would deliver"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Hide or show the checklist",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dismissed": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checklist state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "monitors": {
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "type": "integer"
+                    },
+                    "status_pages": {
+                      "type": "integer"
+                    },
+                    "test_alert_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "When a channel test was last delivered"
+                    },
+                    "dismissed_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "smtp_ready": {
+                      "type": "boolean",
+                      "description": "Whether an email channel would deliver"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/status-page": {
+      "post": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Publish a first status page",
+        "description": "Creates a published page listing every monitor, under a free slug made from the organization's name.",
+        "responses": {
+          "201": {
+            "description": "The page"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API token from Settings \u2192 Access"
+      },
+      "apiTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Token"
+      }
+    },
+    "parameters": {
+      "MonitorId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "Slug": {
+        "name": "slug",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request was rejected",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such object",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "MonitorInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "target"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "icmp",
+              "http",
+              "tcp",
+              "dns",
+              "cert",
+              "domain",
+              "smtp",
+              "imap",
+              "pop3",
+              "postgres",
+              "mysql",
+              "redis",
+              "transaction",
+              "push",
+              "group"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "description": "Host, URL, host:port, domain, or label, depending on the type. For a transaction it is set from the first step's URL."
+          },
+          "interval_seconds": {
+            "type": "integer",
+            "default": 60
+          },
+          "retries": {
+            "type": "integer",
+            "default": 3,
+            "description": "Consecutive failures before the monitor is down"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "tags": {
+            "type": "string",
+            "description": "Comma-separated"
+          },
+          "latency_threshold_ms": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Above this, an up monitor is reported slow"
+          },
+          "slo_target": {
+            "type": "number",
+            "default": 99.9
+          },
+          "parent_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "depends_on": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "channel_ids": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Null uses every channel; an empty array silences the monitor"
+          },
+          "realm_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "config": {
+            "$ref": "#/components/schemas/MonitorConfig"
+          },
+          "probe_node_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Where the check runs. 0 is this server; empty means this server alone. Push and group monitors are always local."
+          },
+          "confirm_locations": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "How many locations must see the monitor down before it is down, from 1 to the number of locations. Locations whose probe has stopped reporting drop out of the count."
+          }
+        }
+      },
+      "MonitorConfig": {
+        "type": "object",
+        "description": "Type-specific options. Secrets are never returned by the API.",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "HEAD",
+              "POST"
+            ]
+          },
+          "expect_status": {
+            "type": "integer"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "keyword_invert": {
+            "type": "boolean"
+          },
+          "json_path": {
+            "type": "string"
+          },
+          "json_expect": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "auth_user": {
+            "type": "string"
+          },
+          "auth_password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Stored encrypted when ARGUS_SECRET_KEY is set; never returned"
+          },
+          "auth_token": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "proxy_url": {
+            "type": "string"
+          },
+          "skip_tls_verify": {
+            "type": "boolean"
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          },
+          "record_type": {
+            "type": "string",
+            "enum": [
+              "A",
+              "AAAA"
+            ]
+          },
+          "expect_ip": {
+            "type": "string"
+          },
+          "record": {
+            "type": "string",
+            "enum": [
+              "A",
+              "AAAA",
+              "CNAME",
+              "MX",
+              "NS",
+              "TXT"
+            ],
+            "description": "DNS record type"
+          },
+          "expect_value": {
+            "type": "string",
+            "description": "Expected DNS answer (substring for TXT) or database result"
+          },
+          "warn_days": {
+            "type": "integer",
+            "description": "How early a cert or domain expiry warning fires; default 14 for cert, 30 for domain"
+          },
+          "tls_mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "starttls",
+              "tls"
+            ],
+            "description": "Mail monitors; redis accepts none or tls"
+          },
+          "database": {
+            "type": "string",
+            "description": "Database name for postgres and mysql"
+          },
+          "query": {
+            "type": "string",
+            "description": "Statement returning one value (postgres, mysql) or a read command (redis). Redis commands are limited to reads."
+          },
+          "steps": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/TransactionStep"
+            },
+            "description": "Transaction monitors: requests run in order with one cookie jar. The first failing step fails the check."
+          },
+          "secrets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "writeOnly": true,
+            "description": "Transaction monitors: named values steps use as {{secret.name}}. Encrypted at rest; reads return the names with empty values, and sending an empty value on update keeps the stored one."
+          },
+          "schedule": {
+            "type": "string",
+            "description": "Push monitors: a five-field cron expression (or @daily, @hourly, @weekly) for when the ping is expected. The interval becomes one minute."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone for schedule; UTC when empty"
+          }
+        }
+      },
+      "TransactionStep": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD"
+            ],
+            "default": "GET"
+          },
+          "url": {
+            "type": "string",
+            "description": "http or https URL. May use {{name}} and {{secret.name}}."
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Values may use references."
+          },
+          "body": {
+            "type": "string",
+            "description": "Not allowed for GET or HEAD. Content-Type defaults from the body's shape."
+          },
+          "expect_status": {
+            "type": "integer",
+            "description": "0 accepts any 2xx or 3xx"
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Must appear in the response body"
+          },
+          "extract": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "path"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Later steps use it as {{name}}"
+                },
+                "from": {
+                  "type": "string",
+                  "enum": [
+                    "json",
+                    "header"
+                  ],
+                  "default": "json"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Dotted JSON path (numeric segments index arrays) or a header name"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Monitor": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MonitorInput"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "state": {
+                "$ref": "#/components/schemas/MonitorState"
+              }
+            }
+          }
+        ]
+      },
+      "MonitorState": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "up",
+              "down"
+            ]
+          },
+          "slow": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "last_latency_ms": {
+            "type": "number",
+            "nullable": true
+          },
+          "last_check_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "down_since": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "uptime_24h": {
+            "type": "number",
+            "nullable": true
+          },
+          "tls_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "muted_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "acked_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "last_failure_evidence": {
+            "$ref": "#/components/schemas/CheckEvidence"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Domain registration expiry"
+          },
+          "next_ping_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "When a scheduled heartbeat is next due"
+          }
+        }
+      },
+      "CheckEvidence": {
+        "type": "object",
+        "nullable": true,
+        "description": "What the probe saw on the last failure",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "status_code": {
+            "type": "integer"
+          },
+          "body_snippet": {
+            "type": "string"
+          },
+          "tls_error": {
+            "type": "string"
+          },
+          "dns_answers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remote_addr": {
+            "type": "string"
+          },
+          "curl": {
+            "type": "string",
+            "description": "A curl command that reproduces the check"
+          },
+          "steps": {
+            "type": "array",
+            "description": "Transaction monitors: each step run, up to and including the one that failed",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "status_code": {
+                  "type": "integer"
+                },
+                "latency_ms": {
+                  "type": "number"
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Channel": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "dest"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "email",
+              "slack",
+              "discord",
+              "teams",
+              "pagerduty",
+              "opsgenie",
+              "telegram",
+              "ntfy",
+              "webhook"
+            ]
+          },
+          "dest": {
+            "type": "string",
+            "description": "Addresses for email; a webhook URL for slack, discord, teams, ntfy and webhook; an integration key (optionally suffixed @eu) for pagerduty and opsgenie; <bot token>:<chat id> for telegram"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "down",
+                "recovery",
+                "slow",
+                "cert",
+                "domain",
+                "escalation",
+                "probe_down",
+                "probe_up",
+                "resend"
+              ]
+            }
+          }
+        }
+      },
+      "SLARow": {
+        "type": "object",
+        "properties": {
+          "monitor_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slo_target": {
+            "type": "number"
+          },
+          "uptime_pct": {
+            "type": "number",
+            "nullable": true
+          },
+          "total_checks": {
+            "type": "integer"
+          },
+          "failed_checks": {
+            "type": "integer"
+          },
+          "within_slo": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

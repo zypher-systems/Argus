@@ -1,0 +1,118 @@
+# Publish backend and web images when a version tag is pushed.
+# The check workflow does not publish. Tag after the release is on main.
+#
+# Needs a Docker socket on the runner. The check jobs do not have one: they
+# compile inside the job container and never talk to a daemon. This job fails
+# with that fact instead of pushing a half-built image. arm64 needs qemu
+# binfmt registered on the Docker host.
+#
+# Secrets, set on the repo, never printed:
+#   GHCR_USERNAME   GitHub user or org that can push packages
+#   GHCR_TOKEN      token with write:packages
+# The verification key is compiled into the backend. The publish job does
+# not take it as a secret or a build arg.
+
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag, such as v2.16.0
+        required: true
+        type: string
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      REGISTRY: ghcr.io/zypher-systems/argus
+    steps:
+      # A tag push checks out that tag. A dispatch must check out the named
+      # tag too: the run's ref is the branch, and publishing that branch
+      # under the release tag would ship later commits as v2.16.0.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+      - name: Publish linux/amd64 and linux/arm64
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ ! -S /var/run/docker.sock ]; then
+            echo "This runner has no Docker socket, so it cannot publish images." >&2
+            exit 1
+          fi
+          if [ -z "${GHCR_USERNAME}" ] || [ -z "${GHCR_TOKEN}" ]; then
+            echo "GHCR_USERNAME and GHCR_TOKEN are required" >&2
+            exit 1
+          fi
+          if ! command -v docker >/dev/null 2>&1 || ! docker buildx version >/dev/null 2>&1; then
+            if [ "$(id -u)" -eq 0 ]; then
+              apt-get update
+              apt-get install -y --no-install-recommends docker.io docker-buildx
+            else
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends docker.io docker-buildx
+            fi
+          fi
+          if ! docker buildx version >/dev/null 2>&1; then
+            echo "docker buildx is not available, so this runner cannot publish images." >&2
+            exit 1
+          fi
+          case "${GITHUB_REF}" in
+            refs/tags/v*) TAG="${GITHUB_REF#refs/tags/}" ;;
+            *) TAG="${INPUT_TAG}" ;;
+          esac
+          case "${TAG}" in
+            v[0-9]*) ;;
+            *) echo "refusing to publish tag ${TAG}" >&2; exit 1 ;;
+          esac
+          if [ "${GITHUB_REF}" != "refs/tags/${TAG}" ]; then
+            git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
+            git checkout --detach "refs/tags/${TAG}"
+          fi
+
+          docker info
+          docker buildx version
+          printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+
+          if ! docker buildx inspect argus >/dev/null 2>&1; then
+            docker buildx create --name argus --driver docker-container --use --bootstrap
+          else
+            docker buildx use argus
+          fi
+
+          docker buildx build \
+            --push \
+            --provenance=false \
+            --sbom=false \
+            --platform linux/amd64,linux/arm64 \
+            --file backend/Dockerfile \
+            --tag "${REGISTRY}/backend:${TAG}" \
+            --tag "${REGISTRY}/backend:latest" \
+            backend
+
+          docker buildx build \
+            --push \
+            --provenance=false \
+            --sbom=false \
+            --platform linux/amd64,linux/arm64 \
+            --file frontend/Dockerfile \
+            --tag "${REGISTRY}/web:${TAG}" \
+            --tag "${REGISTRY}/web:latest" \
+            frontend
+
+          echo "published ${REGISTRY}/{backend,web}:${TAG}"
