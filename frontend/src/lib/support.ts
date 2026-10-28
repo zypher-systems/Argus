@@ -1,6 +1,9 @@
 /** Where "contact Zypher Systems" sends people. */
 export const SUPPORT_EMAIL = "support@zyphersystems.com";
 
+/** Prefilled bug and feature reports. The instance ID is not included. */
+export const GITHUB_ISSUES_NEW = "https://github.com/zypher-systems/Argus/issues/new";
+
 /**
  * A mail link to support that already says which Argus is asking, since
  * that is the first thing support needs to know.

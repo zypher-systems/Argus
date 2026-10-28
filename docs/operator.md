@@ -627,10 +627,11 @@ Email subscribe needs SMTP configured (Settings). Confirmation lands on
 Write to **support@zyphersystems.com**. Say which Argus version you run.
 The instance ID is available from the API at `GET /api/instance`.
 
-Administrators can also use **Send feedback** in the sidebar for a bug, an
-idea or anything else. It opens a draft in your own
-email app with those details filled in. Argus does not send it for you, and
-nothing leaves the install until you press send in your mail app.
+Administrators can also use **Send feedback** in the sidebar. A bug or an
+idea opens a GitHub issue with the Argus version, the page, and the browser
+filled in. It does not include the instance ID. Anything else opens a draft
+in your own email app, and that draft does include the instance ID. Argus
+does not send either one for you.
 
 ## Troubleshooting
 
