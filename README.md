@@ -1,13 +1,51 @@
 # Argus
 
-Self-hosted uptime monitoring — ping your infrastructure, get alerts, and watch it on a fast dashboard. Public status pages show names only; probe targets stay private.
-
-It checks websites, APIs, hosts, DNS, certificates, domains, mail servers and
-databases, alerts through the channels a team already uses, and publishes
-status pages. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+Self-hosted uptime monitoring. It checks websites, APIs, hosts, DNS, certificates, domains, mail servers, and databases, sends alerts through the channels a team already uses, and publishes status pages. A status page shows names only. Probe targets stay private.
 
 ![stack](https://img.shields.io/badge/stack-Go%2BReact%2BPostgres%2BDocker-6366f1)
 ![version](https://img.shields.io/badge/version-2.16.0-1f5bd8)
+![license](https://img.shields.io/badge/license-MIT-1f5bd8)
+
+![The Argus overview: six monitors up, one down, and a fleet latency chart](docs/readme/overview.png)
+
+![A public Argus status page, all systems operational, with 90 days of uptime](docs/readme/status.png)
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+
+## Install
+
+Docker and Docker Compose, on `linux/amd64` or `linux/arm64`. No Go or Node toolchain, and no clone.
+
+```bash
+mkdir argus && cd argus
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/zypher-systems/Argus/main/docker-compose.yml
+curl -fsSL -o .env.example https://raw.githubusercontent.com/zypher-systems/Argus/main/.env.example
+cp .env.example .env
+```
+
+Edit `.env` before the first start:
+
+- `POSTGRES_PASSWORD` — any characters. Postgres reads it only when the data volume is first created.
+- `ARGUS_ADMIN_EMAIL` and `ARGUS_ADMIN_PASSWORD` — the first administrator. The password must be at least 8 characters, and not `change-me` or `change-me-too`. After the account exists, these are ignored.
+- `ARGUS_SECRET_KEY` — optional, recommended. `openssl rand -hex 32`. It encrypts monitor credentials. Keep a copy.
+
+```bash
+docker compose up -d
+```
+
+Open http://localhost:8080 (or `ARGUS_WEB_PORT`) and sign in. Data stays in the `pgdata` volume.
+
+Update with:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+`latest` moves when a new image is published. To stay on this version, change both image tags in `docker-compose.yml` from `latest` to `v2.16.0`.
+
+Stop the stack with `docker compose down`. That keeps the volume. Do not pass `--volumes` unless you mean to delete the database.
+
+Operator notes (backup, reverse proxy, upgrades): [docs/operator.md](docs/operator.md).
 
 ## Features
 
@@ -37,37 +75,11 @@ status pages. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 - Distributed probe nodes, with alerts only when enough locations agree
 - SLA / SLO reporting with CSV export and a monthly uptime report by email
 - Audit log
-- Backup and restore (`make backup` / `make restore`)
+- Backup and restore (`make backup` / `make restore`, from a source checkout)
 - Probe dead-man's-switch and stale-check detection
 - Prometheus `/api/metrics` and an OpenAPI description at `/api/openapi.json`
 
 The dashboard is virtualized for large fleets. **Hundreds of monitors on a small VPS is the expected range.** A 1,000-monitor SLA is not claimed; ListMonitors is timed in the test suite at 250 rows.
-
-## Quick start
-
-Requirements: Docker + Docker Compose, on `linux/amd64` or `linux/arm64`. The
-images build inside Docker, so no Go or Node toolchain is needed on the host.
-
-```bash
-git clone https://github.com/zypher-systems/argus.git && cd argus
-cp deploy/.env.example deploy/.env   # set the admin password and a real db password
-make up                              # builds and starts the full stack
-```
-
-Update with `git pull && make up`. A version tag also publishes
-`ghcr.io/zypher-systems/argus/backend` and `web` for `linux/amd64` and
-`linux/arm64`. Until that tag exists, every install builds from a checkout.
-`deploy/docker-compose.release.yml` pulls those images and does not build.
-
-Open http://localhost:8080 (or `ARGUS_WEB_PORT`) and sign in with the admin credentials from your `.env`.
-
-The first boot creates the admin account automatically. Data is stored in the `argus_pgdata` Docker volume. Postgres will not start if `POSTGRES_PASSWORD` is unset.
-
-Operator notes (env vars, backup/restore, upgrades, reverse proxy): [docs/operator.md](docs/operator.md).
-
-A version tag on GitHub publishes the images. Locally, `make test` runs the
-backend in Docker, and `make e2e` runs the smoke against a stack that is
-already up, reading the admin password and port from `deploy/.env`.
 
 ## The stack
 
@@ -78,48 +90,37 @@ Browser ──▶ web (nginx: React app + reverse proxy)
               └── db    (PostgreSQL 16)
 ```
 
-- `api` and `probe` share one image (`argus/backend`); the probe ICMP path uses Linux ping sockets so it works as the non-root container user
-- Services coordinate via Postgres `LISTEN/NOTIFY` (`argus_config` for reloads, `argus_events` for the live dashboard)
-- Migrations run automatically on `api` startup
-- TLS for the UI is your reverse proxy if you want HTTPS. Argus does not ship a terminator. Set `ARGUS_COOKIE_SECURE=true` when the UI is served over HTTPS.
-- Containers run as non-root. nginx listens on **8080** inside the web container.
-- A hosted, multi-organization build exists (`-tags hosted`, `ARGUS_HOSTED`). A self-hosted install ignores that setting. An organization's plan label does not lock features.
+- `api` and `probe` share `ghcr.io/zypher-systems/argus/backend`. The probe ICMP path uses Linux ping sockets, so it runs as the non-root container user.
+- `web` is `ghcr.io/zypher-systems/argus/web`. nginx listens on **8080** inside the container.
+- Services coordinate via Postgres `LISTEN/NOTIFY` (`argus_config` for reloads, `argus_events` for the live dashboard).
+- Migrations run on `api` startup.
+- TLS for the UI is your reverse proxy. Argus does not ship a terminator. Set `ARGUS_COOKIE_SECURE=true` when the UI is served over HTTPS.
+- Containers run as non-root.
+- The published images are the self-hosted build. `ARGUS_HOSTED` is ignored. An organization's plan label does not lock features.
 
-## Make targets
+## Alert email
+
+1. Settings → **Email alerts (SMTP)** — host, port, encryption, credentials
+2. Settings → **Notification channels** — add an Email channel (and/or webhook, Slack, Discord)
+3. Send a test from that channel
+
+## From source
+
+`make up` builds from this checkout and starts `deploy/docker-compose.yml`. `make test` runs the backend tests in Docker. `make e2e` smokes a stack that is already up, reading the admin password and port from `deploy/.env`.
 
 | Command | Description |
 | --- | --- |
-| `make up` | Build + start the source-build stack |
+| `make up` | Build and start the source stack |
 | `make down` | Stop the stack (data kept) |
 | `make logs` | Follow logs |
-| `make test` | Backend vet + tests (runs in Docker) |
+| `make test` | Backend vet and tests, in Docker |
 | `make e2e` | Compose smoke (stack must be up on `ARGUS_WEB_PORT`) |
 | `make backup` | `pg_dump` into `backups/` |
 | `make restore FILE=...` | Restore a dump (replaces the database) |
 | `make clean` | Stop the stack and **delete the database** |
 
-## Alert email setup
-
-1. Settings → **Email alerts (SMTP)** — fill in host, port, encryption, credentials
-2. Settings → **Notification channels** — add an Email channel (and/or webhook, Slack, Discord)
-3. Click **Send test email** / test send per channel to verify delivery
-
-## Development
-
-```bash
-make test          # go vet + go test in Docker
-make e2e           # smoke against a running stack
-docker compose -f deploy/docker-compose.yml build
-```
-
-Work on a patch branch (`2.0.0-patch`) and merge to `dev`, then `dev` to `main`.
-
-Frontend: Vite + React + TypeScript + Tailwind v4 (in `frontend/`).
-Backend: Go + chi + pgx (in `backend/`).
-
-## History
-
-[CHANGELOG.md](CHANGELOG.md) records every release.
+Frontend: Vite + React + TypeScript + Tailwind v4 (`frontend/`).
+Backend: Go + chi + pgx (`backend/`).
 
 ## License
 

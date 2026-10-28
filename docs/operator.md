@@ -5,43 +5,38 @@ Application behaviour lives in the README; this file is for running the stack.
 
 ## Install
 
-Argus builds from a checkout of
-[github.com/zypher-systems/argus](https://github.com/zypher-systems/argus). The
-images build inside Docker, so the host needs only Docker, Compose, and git.
+The usual install is the published images. Docker and Compose are enough.
+The README has the short version: save `docker-compose.yml` and `.env.example`
+from the repository, set the passwords in `.env`, and run `docker compose up -d`.
 
 ```bash
-git clone https://github.com/zypher-systems/argus.git && cd argus
-cp deploy/.env.example deploy/.env
-# set POSTGRES_PASSWORD, ARGUS_ADMIN_EMAIL, ARGUS_ADMIN_PASSWORD, ARGUS_SECRET_KEY
-make up
+mkdir argus && cd argus
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/zypher-systems/Argus/main/docker-compose.yml
+curl -fsSL -o .env.example https://raw.githubusercontent.com/zypher-systems/Argus/main/.env.example
+cp .env.example .env
+# set POSTGRES_PASSWORD, ARGUS_ADMIN_EMAIL, ARGUS_ADMIN_PASSWORD
+docker compose up -d
 ```
 
-This builds `argus/backend:latest` and `argus/web:latest` and starts
-`deploy/docker-compose.yml`. Open `http://localhost:8080` (or `ARGUS_WEB_PORT`).
-The first boot creates the admin from `ARGUS_ADMIN_EMAIL` / `ARGUS_ADMIN_PASSWORD`.
-Argus will not start for the first time without them: the password must be
-at least 8 characters and not the example value. If the stack does not come
-up, `make logs` says which of the two to fix.
+Open `http://localhost:8080` (or `ARGUS_WEB_PORT`). The first boot creates the
+admin from `ARGUS_ADMIN_EMAIL` / `ARGUS_ADMIN_PASSWORD`. Argus will not start
+for the first time without them: the password must be at least 8 characters
+and not the example value. If the api container restarts, `docker compose logs api`
+says which of the two to fix.
 
-### Prebuilt images
+`latest` is what `docker-compose.yml` pulls. To pin this version, change both
+image tags in that file from `latest` to `v2.16.0`.
 
-`deploy/docker-compose.release.yml` runs prebuilt images and never builds.
-The version tag publishes them to GitHub's registry:
+### From a checkout
 
-```bash
-ARGUS_IMAGE_BACKEND=ghcr.io/zypher-systems/argus/backend:v2.16.0
-ARGUS_IMAGE_WEB=ghcr.io/zypher-systems/argus/web:v2.16.0
-```
+`make up` builds `argus/backend` and `argus/web` from this tree and starts
+`deploy/docker-compose.yml`. Copy `deploy/.env.example` to `deploy/.env` and
+set the same passwords first. Use that path to work on Argus. An install that
+only runs it should use the published images above.
 
-Those names are empty until the tag is pushed. Until then, install with
-`make up` above. When the images exist, set the two variables in `deploy/.env`
-and run the release file from `deploy/`:
-
-```bash
-docker compose -f docker-compose.release.yml up -d
-```
-
-Pin the version tag or a digest. `latest` moves on every release.
+`deploy/docker-compose.release.yml` is the same image stack, with the image
+names taken from `ARGUS_IMAGE_BACKEND` and `ARGUS_IMAGE_WEB` instead of being
+written in the file.
 
 ## Environment variables
 
@@ -62,8 +57,8 @@ Pin the version tag or a digest. `latest` moves on every release.
 | `ARGUS_DB_URL` | no | empty | A whole connection URL, for an external database. Takes precedence over the separate values; a password in it must be URL-encoded. |
 | `ARGUS_LISTEN` | no | `:8080` | API bind address inside the container. |
 | `ARGUS_PROBE_LISTEN` | no | `:8081` | Probe health bind address (`GET /health`). |
-| `ARGUS_IMAGE_BACKEND` | release compose | — | Image the api and probe run. Required by the release compose. The tag workflow pushes `ghcr.io/zypher-systems/argus/backend`. |
-| `ARGUS_IMAGE_WEB` | release compose | — | Image nginx runs. Required by the release compose. The tag workflow pushes `ghcr.io/zypher-systems/argus/web`. |
+| `ARGUS_IMAGE_BACKEND` | release compose only | — | Image the api and probe run, for `deploy/docker-compose.release.yml`. The root `docker-compose.yml` already uses `ghcr.io/zypher-systems/argus/backend`. |
+| `ARGUS_IMAGE_WEB` | release compose only | — | Image nginx runs, for `deploy/docker-compose.release.yml`. The root file already uses `ghcr.io/zypher-systems/argus/web`. |
 | `ARGUS_SECRET_KEY` | recommended | — | 64 hex characters. Encrypts monitor credentials at rest. Set it on api **and** probe, and back it up. |
 | `ARGUS_TRUSTED_PROXIES` | behind a proxy | `1` | Reverse proxies in front of the API, counting the bundled web container. Set `2` behind nginx, Caddy or Traefik. See [Reverse proxy](#reverse-proxy). |
 
@@ -93,7 +88,7 @@ Kuma backup. "Email me" appears once SMTP is set up under Settings → Alerts.
 | SMTP / IMAP / POP3 | A mail server greets | Plain, STARTTLS or implicit TLS; reads certificate expiry; optional banner keyword |
 | PostgreSQL / MySQL | A fresh connection and one statement | Defaults to `SELECT 1`; optional query and expected result |
 | Redis | A fresh connection and one command | Defaults to `PING`; commands are limited to reads |
-| Transaction (Pro) | A sequence of HTTP requests | Up to 10 steps sharing cookies; values carried between steps; the failing step is named. See [Transaction monitors](#transaction-monitors) |
+| Transaction | A sequence of HTTP requests | Up to 10 steps sharing cookies; values carried between steps; the failing step is named. See [Transaction monitors](#transaction-monitors) |
 | Push | A cron or backup job checks in | |
 | Group | Nothing; groups other monitors | |
 
@@ -406,16 +401,13 @@ With the hosted build and `ARGUS_HOSTED=true`:
 Do not enable hosted mode on HTTP without `ARGUS_COOKIE_SECURE=false` or
 browsers will drop the session cookie.
 
-To run a probe in another region, build the backend image on that host from a
-checkout (or pull it from your own registry) and start it in probe mode:
+To run a probe in another region, start the published backend image in probe mode:
 
 ```bash
-git clone https://github.com/zypher-systems/argus.git
-docker build -t argus/backend:latest argus/backend
 docker run -d --restart unless-stopped --cap-add NET_RAW \
   -e ARGUS_API_URL=https://argus.example.com \
   -e ARGUS_PROBE_TOKEN=probe_... \
-  argus/backend:latest probe
+  ghcr.io/zypher-systems/argus/backend:latest probe
 ```
 
 Build the probe from the same version as the server.
@@ -501,12 +493,10 @@ fail; stay on Postgres 16.
 
 ## Upgrade
 
-1. `make backup`
-2. `git pull` to the release you want (or check out its tag)
-3. `make up` rebuilds the images and restarts the stack. With the release
-   compose, point `ARGUS_IMAGE_*` at the new images and run it again instead.
-4. API runs migrations on startup. Watch `make logs` until `/api/health` returns `{"status":"ok"}`.
-5. If a migration fails, restore the dump from step 1 and send the log to
+1. Back up first. From the image install, `docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > argus.dump`. From a checkout, `make backup`.
+2. `docker compose pull && docker compose up -d`. A checkout that builds its own images uses `git pull` and `make up` instead. To stay on one version, set the image tags to that version (`v2.16.0`) before pulling.
+3. The api runs migrations on startup. `docker compose logs -f api` (or `make logs`) until `/api/health` returns `{"status":"ok"}`.
+4. If a migration fails, restore the dump from step 1 and send the log to
    support@zyphersystems.com.
 
 Do not skip the backup. Migrations are not guaranteed to reverse.
@@ -635,8 +625,7 @@ does not send either one for you.
 
 ## Troubleshooting
 
-**Compose exits: `set POSTGRES_PASSWORD in deploy/.env`.** Copy
-`deploy/.env.example` to `deploy/.env` and set a real password.
+**Compose exits: `set POSTGRES_PASSWORD in .env`.** Copy `.env.example` to `.env` and set a real password. A source-build stack (`make up`) says `deploy/.env` instead; copy `deploy/.env.example` there.
 
 **The stack starts but the api container keeps restarting.** `make logs`
 shows why. On a first start it is usually the administrator: "no account

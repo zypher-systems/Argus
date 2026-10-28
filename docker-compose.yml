@@ -1,0 +1,117 @@
+# Run Argus from the published images. No source checkout and no build.
+#
+#   cp .env.example .env
+#   # set POSTGRES_PASSWORD, ARGUS_ADMIN_EMAIL, ARGUS_ADMIN_PASSWORD
+#   docker compose up -d
+#
+# Update with: docker compose pull && docker compose up -d
+# To build this repository instead, use `make up`.
+
+name: argus
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    mem_limit: 512m
+    cpus: "1.0"
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/zypher-systems/argus/backend:latest
+    command: ["api"]
+    user: "65532:65532"
+    cap_drop: [ALL]
+    mem_limit: 512m
+    cpus: "1.0"
+    logging: *default-logging
+    environment:
+      # Separate values, not a URL: a password with / @ : # or ? in it would
+      # break one.
+      ARGUS_DB_HOST: db
+      ARGUS_DB_USER: ${POSTGRES_USER}
+      ARGUS_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      ARGUS_DB_NAME: ${POSTGRES_DB}
+      ARGUS_ADMIN_EMAIL: ${ARGUS_ADMIN_EMAIL:-}
+      ARGUS_ADMIN_PASSWORD: ${ARGUS_ADMIN_PASSWORD:-}
+      ARGUS_COOKIE_SECURE: ${ARGUS_COOKIE_SECURE:-}
+      ARGUS_TRUSTED_PROXIES: ${ARGUS_TRUSTED_PROXIES:-1}
+      ARGUS_SECRET_KEY: ${ARGUS_SECRET_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  probe:
+    image: ghcr.io/zypher-systems/argus/backend:latest
+    user: "65532:65532"
+    cap_drop: [ALL]
+    cap_add:
+      - NET_RAW
+    command: ["probe"]
+    mem_limit: 256m
+    cpus: "1.0"
+    logging: *default-logging
+    environment:
+      ARGUS_DB_HOST: db
+      ARGUS_DB_USER: ${POSTGRES_USER}
+      ARGUS_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      ARGUS_DB_NAME: ${POSTGRES_DB}
+      ARGUS_SECRET_KEY: ${ARGUS_SECRET_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/zypher-systems/argus/web:latest
+    cap_drop: [ALL]
+    mem_limit: 128m
+    cpus: "0.5"
+    logging: *default-logging
+    ports:
+      - "${ARGUS_WEB_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
