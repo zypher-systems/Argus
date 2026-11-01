@@ -62,6 +62,8 @@ func TestPublicMonitorsDoNotCallAQuietMonitorUp(t *testing.T) {
 		// A group is refreshed by a sweep, whatever interval it holds.
 		{name: "group-between-sweeps", kind: "group", status: "up", interval: 10, age: 45 * time.Second, wantStatus: "up", wantOver: "operational"},
 		{name: "group-after-sweeps-stop", kind: "group", status: "up", interval: 10, age: hour, wantStatus: "unknown", wantOver: "unknown"},
+		{name: "long-group-between-sweeps", kind: "group", status: "up", interval: 3600, age: 45 * time.Second, wantStatus: "up", wantOver: "operational"},
+		{name: "long-group-after-sweeps-stop", kind: "group", status: "up", interval: 3600, age: 5 * time.Minute, wantStatus: "unknown", wantOver: "unknown"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -261,7 +261,7 @@ const groupRefreshSeconds = 60
 // that went down keeps saying so: Argus stopping is no sign that it recovered.
 func markQuietMonitor(m *PublicMonitor, interval int, lastCheck *time.Time, now time.Time) {
 	if strings.EqualFold(m.Type, "group") {
-		interval = max(interval, groupRefreshSeconds)
+		interval = groupRefreshSeconds
 	}
 	if m.Status == "up" && MonitorStale(true, interval, lastCheck, now) {
 		m.Status, m.Slow = "unknown", false
