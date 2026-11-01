@@ -1,0 +1,100 @@
+# Checks every pull request into dev or main, then runs the install smoke
+# against the real images. GitHub-hosted standard runners only.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: argus
+          POSTGRES_PASSWORD: argus
+          POSTGRES_DB: argus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U argus -d argus_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      ARGUS_TEST_DB_URL: postgres://argus:argus@localhost:5432/argus_test?sslmode=disable
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Install golangci-lint
+        working-directory: backend
+        run: |
+          GOBIN="$RUNNER_TEMP/lint" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+          echo "$RUNNER_TEMP/lint" >> "$GITHUB_PATH"
+      - name: Lint
+        working-directory: backend
+        run: golangci-lint run ./...
+      - name: Vet and test
+        working-directory: backend
+        run: |
+          go vet ./...
+          go test -p 1 ./...
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+  smoke:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ARGUS_ADMIN_EMAIL: admin@example.com
+      ARGUS_ADMIN_PASSWORD: ci-pipeline-admin-password
+      ARGUS_BASE_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Start the stack
+        run: |
+          cp deploy/.env.example deploy/.env
+          sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-pipeline-db-password/' deploy/.env
+          sed -i "s/^ARGUS_ADMIN_PASSWORD=.*/ARGUS_ADMIN_PASSWORD=$ARGUS_ADMIN_PASSWORD/" deploy/.env
+          # 32 bytes, CI only. Not a key anyone installs with.
+          echo "ARGUS_SECRET_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" >> deploy/.env
+          docker compose -f deploy/docker-compose.yml up -d --build
+      # Check-now answers 503 until the probe has written a heartbeat.
+      - name: Wait for the probe
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf "$ARGUS_BASE_URL/api/health" | grep -q '"ok":true'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "the probe never reported in" >&2
+          exit 1
+      - name: Smoke
+        run: ./tests/e2e/smoke.sh
+      - name: Show the logs
+        if: failure()
+        run: docker compose -f deploy/docker-compose.yml logs --no-color --tail=200
