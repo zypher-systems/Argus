@@ -16,7 +16,7 @@ Fixes for results that said more than Argus knew, and for what an import left be
 
 ### Changed
 
-- **An HTTP check on a stream that never ends now fails at the timeout.** Such endpoints need a `HEAD` request.
+- **An HTTP check on a slow stream now fails at the timeout.** A response that never finishes and sends less than 1 MiB used to pass. Such endpoints need a `HEAD` request.
 - **A status page with a monitor not checked yet says unknown,** including a scheduled heartbeat waiting for its first ping.
 
 ### Added
