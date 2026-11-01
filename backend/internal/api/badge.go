@@ -80,15 +80,18 @@ func xmlEscape(s string) string {
 	return b.String()
 }
 
-// StatusBadge describes the whole page: operational, degraded, or outage.
+// StatusBadge describes the whole page: operational, degraded, outage, or
+// unknown. Green has to be earned, so anything else is unknown.
 func StatusBadge(overall string) (value, colour string) {
 	switch overall {
 	case "down":
 		return "outage", badgeRed
 	case "degraded":
 		return "degraded", badgeAmber
-	default:
+	case "operational":
 		return "operational", badgeGreen
+	default:
+		return "unknown", badgeGrey
 	}
 }
 

@@ -40,7 +40,7 @@ func TestBadgeEscapesText(t *testing.T) {
 }
 
 func TestStatusAndUptimeBadgeValues(t *testing.T) {
-	for overall, want := range map[string]string{"operational": "operational", "degraded": "degraded", "down": "outage"} {
+	for overall, want := range map[string]string{"operational": "operational", "degraded": "degraded", "down": "outage", "unknown": "unknown"} {
 		if v, _ := StatusBadge(overall); v != want {
 			t.Errorf("StatusBadge(%q) = %q", overall, v)
 		}

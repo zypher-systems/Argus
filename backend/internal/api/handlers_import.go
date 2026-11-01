@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -119,13 +120,13 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var imported int
+	var imported, channels int
 	var skipped []importSkip
 	switch format {
 	case "kuma":
 		imported, skipped, err = s.importKuma(r, payload)
 	case "argus":
-		imported, skipped, err = s.importArgus(r, payload)
+		imported, channels, skipped, err = s.importArgus(r, payload)
 	default:
 		writeErr(w, http.StatusBadRequest, "format must be argus or kuma")
 		return
@@ -137,16 +138,90 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	if skipped == nil {
 		skipped = []importSkip{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"imported": imported, "skipped": skipped})
+	writeJSON(w, http.StatusOK, map[string]any{"imported": imported, "channels": channels, "skipped": skipped})
 }
 
-func (s *Server) importArgus(r *http.Request, raw []byte) (int, []importSkip, error) {
+// importChannels restores an export's notification channels and returns where
+// each exported id ended up, how many were added, and any it left out. A
+// channel this install already has, by name, type and destination, is reused:
+// restoring an export twice must not send every alert twice. Two channels may
+// share a destination, so the destination alone does not identify one.
+func (s *Server) importChannels(r *http.Request, channels []store.Channel) (map[int64]int64, int, []importSkip, error) {
+	moved := map[int64]int64{}
+	skipped := []importSkip{}
+	existing, err := s.store.ListChannels(r.Context())
+	if err != nil {
+		return nil, 0, nil, fmt.Errorf("failed to list channels")
+	}
+	type identity struct{ name, kind, dest string }
+	have := make(map[identity]int64, len(existing))
+	for _, c := range existing {
+		have[identity{c.Name, c.Type, c.Dest}] = c.ID
+	}
+	skip := func(name, reason string) {
+		skipped = append(skipped, importSkip{Name: name, Reason: "notification channel: " + reason})
+	}
+	total, added := len(existing), 0
+	for _, src := range channels {
+		// An export can be edited by hand, so a channel passes the same
+		// checks as one typed into the form.
+		c, msg := channelRequest{Name: src.Name, Type: src.Type, Dest: src.Dest, Events: src.Events}.validate()
+		if msg != "" {
+			skip(src.Name, msg)
+			continue
+		}
+		key := identity{c.Name, c.Type, c.Dest}
+		if id, ok := have[key]; ok {
+			moved[src.ID] = id
+			continue
+		}
+		if total >= maxChannels {
+			skip(c.Name, tooManyChannels)
+			continue
+		}
+		if err := s.store.CreateChannel(r.Context(), &c); err != nil {
+			skip(c.Name, "could not be saved")
+			continue
+		}
+		have[key] = c.ID
+		moved[src.ID] = c.ID
+		total++
+		added++
+	}
+	return moved, added, skipped, nil
+}
+
+// remapChannels moves a monitor's channels onto this install's ids. nil is the
+// default, every channel, and an empty list is deliberately none; both carry
+// over as they are. A monitor that loses all of its channels goes back to the
+// default, as it does when its last channel is deleted: a monitor that alerts
+// nobody says so nowhere.
+func remapChannels(ids []int64, moved map[int64]int64) []int64 {
+	if ids == nil {
+		return nil
+	}
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if nid, ok := moved[id]; ok && !slices.Contains(out, nid) {
+			out = append(out, nid)
+		}
+	}
+	if len(ids) > 0 && len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (s *Server) importArgus(r *http.Request, raw []byte) (int, int, []importSkip, error) {
 	var dump argusExport
 	if err := json.Unmarshal(raw, &dump); err != nil {
-		return 0, nil, err
+		return 0, 0, nil, err
+	}
+	channelIDs, channels, skipped, err := s.importChannels(r, dump.Channels)
+	if err != nil {
+		return 0, 0, nil, err
 	}
 	idMap := map[int64]int64{}
-	skipped := []importSkip{}
 	// Groups first so parent_id can resolve.
 	monitors := append([]store.MonitorWithState{}, dump.Monitors...)
 	sort.SliceStable(monitors, func(i, j int) bool {
@@ -175,7 +250,7 @@ func (s *Server) importArgus(r *http.Request, raw []byte) (int, []importSkip, er
 				m.DependsOn = nil
 			}
 		}
-		m.ChannelIDs = nil
+		m.ChannelIDs = remapChannels(m.ChannelIDs, channelIDs)
 		// Probe nodes are another install's ids. Keep them only when they
 		// name nodes here; otherwise the monitor is checked from this server.
 		if s.applyProbeNodes(r, &m) != nil {
@@ -218,7 +293,7 @@ func (s *Server) importArgus(r *http.Request, raw []byte) (int, []importSkip, er
 		idMap[oldID] = m.ID
 		imported++
 	}
-	return imported, skipped, nil
+	return imported, channels, skipped, nil
 }
 
 func (s *Server) importKuma(r *http.Request, raw []byte) (int, []importSkip, error) {

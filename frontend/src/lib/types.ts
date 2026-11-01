@@ -454,7 +454,7 @@ export interface PublicStatusDay {
 export interface PublicStatusMonitor {
   name: string;
   type: string;
-  status: "up" | "down" | "pending";
+  status: "up" | "down" | "pending" | "unknown";
   slow: boolean;
   uptime_90d: number | null;
   days: PublicStatusDay[];
@@ -481,7 +481,7 @@ export interface PublicStatus {
   name: string;
   slug: string;
   headline: string;
-  overall: "operational" | "degraded" | "down";
+  overall: "operational" | "degraded" | "down" | "unknown";
   custom_domain?: string;
   branding?: {
     product_name: string;
@@ -561,6 +561,7 @@ export interface LatencyPercentiles {
 
 export interface ImportResult {
   imported: number;
+  channels: number;
   skipped: { name: string; reason: string }[];
 }
 

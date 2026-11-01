@@ -192,7 +192,8 @@ func (s *Store) ValidateMonitorIDs(ctx context.Context, ids []int64) error {
 }
 
 func (s *Store) PublicMonitors(ctx context.Context, ids []int64) ([]PublicMonitor, error) {
-	q := `SELECT m.id, m.name, m.type, COALESCE(s.status, 'pending'), s.slow_since IS NOT NULL AND COALESCE(s.status,'') = 'up', m.created_at
+	q := `SELECT m.id, m.name, m.type, COALESCE(s.status, 'pending'), s.slow_since IS NOT NULL AND COALESCE(s.status,'') = 'up', m.created_at,
+		m.interval_seconds, s.last_check_at
 		FROM monitors m LEFT JOIN monitor_state s ON s.monitor_id = m.id
 		WHERE m.enabled = TRUE`
 	args := []any{}
@@ -214,11 +215,15 @@ func (s *Store) PublicMonitors(ctx context.Context, ids []int64) ([]PublicMonito
 	var listed []row
 	var monitorIDs []int64
 	created := map[int64]time.Time{}
+	now := time.Now()
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.id, &r.m.Name, &r.m.Type, &r.m.Status, &r.m.Slow, &r.created); err != nil {
+		var interval int
+		var lastCheck *time.Time
+		if err := rows.Scan(&r.id, &r.m.Name, &r.m.Type, &r.m.Status, &r.m.Slow, &r.created, &interval, &lastCheck); err != nil {
 			return nil, err
 		}
+		markQuietMonitor(&r.m, interval, lastCheck, now)
 		listed = append(listed, r)
 		monitorIDs = append(monitorIDs, r.id)
 		created[r.id] = r.created
@@ -245,6 +250,22 @@ func (s *Store) PublicMonitors(ctx context.Context, ids []int64) ([]PublicMonito
 		out = []PublicMonitor{}
 	}
 	return out, nil
+}
+
+// groupRefreshSeconds is the interval a group is judged by. The probe refreshes
+// groups on a sweep every 30 seconds, whatever interval the group holds.
+const groupRefreshSeconds = 60
+
+// markQuietMonitor stops the page vouching for a monitor nothing is checking.
+// "up" is what the last check saw, and a visitor reads it as now. A monitor
+// that went down keeps saying so: Argus stopping is no sign that it recovered.
+func markQuietMonitor(m *PublicMonitor, interval int, lastCheck *time.Time, now time.Time) {
+	if strings.EqualFold(m.Type, "group") {
+		interval = max(interval, groupRefreshSeconds)
+	}
+	if m.Status == "up" && MonitorStale(true, interval, lastCheck, now) {
+		m.Status, m.Slow = "unknown", false
+	}
 }
 
 // AdaptiveHistoryWindow returns the first day and bar count for a public

@@ -1011,6 +1011,7 @@
           "status"
         ],
         "summary": "Public status page as JSON",
+        "description": "overall is operational, degraded, down or unknown. A monitor's status is up, down, pending or unknown; unknown means it is overdue for a check.",
         "security": [],
         "responses": {
           "200": {
@@ -1300,7 +1301,7 @@
         },
         "responses": {
           "200": {
-            "description": "Counts of imported and skipped monitors"
+            "description": "imported counts monitors, channels counts notification channels added by an Argus import, and skipped lists what was left out and why"
           },
           "400": {
             "description": "Unreadable file, or a missing or wrong passphrase"

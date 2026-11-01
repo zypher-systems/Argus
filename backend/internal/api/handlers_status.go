@@ -306,21 +306,29 @@ func (s *Server) publicView(ctx context.Context, page *store.StatusPage) (pub st
 	return pub, ""
 }
 
+// overallStatus sums up a page. "operational" is a claim about every monitor,
+// so it takes a current answer from each: one overdue for a check, or not yet
+// checked at all, leaves the page unknown.
 func overallStatus(monitors []store.PublicMonitor) string {
-	down, slow := false, false
+	down, slow, unknown := false, false, false
 	for _, m := range monitors {
-		if m.Status == "down" {
+		switch m.Status {
+		case "down":
 			down = true
+		case "unknown", "pending":
+			unknown = true
 		}
 		if m.Slow {
 			slow = true
 		}
 	}
-	if down {
+	switch {
+	case down:
 		return "down"
-	}
-	if slow {
+	case slow:
 		return "degraded"
+	case unknown:
+		return "unknown"
 	}
 	return "operational"
 }
