@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, Moon, Sun, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, HelpCircle, Moon, Sun, XCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/controls";
 import { ApiError, api } from "../lib/api";
@@ -28,6 +28,12 @@ const OVERALL = {
     tone: "text-danger",
     ring: "border-danger/30 bg-danger/10",
     Icon: XCircle,
+  },
+  unknown: {
+    label: "Status unknown",
+    tone: "text-muted-foreground",
+    ring: "border-border bg-muted/40",
+    Icon: HelpCircle,
   },
 } as const;
 
@@ -132,7 +138,7 @@ export function StatusPublic({ initial }: { initial?: PublicStatus }) {
     );
   }
 
-  const overall = OVERALL[page.overall] ?? OVERALL.operational;
+  const overall = OVERALL[page.overall] ?? OVERALL.unknown;
   const brandName = page.branding?.product_name?.trim();
   const logo = page.branding?.logo_url?.trim();
   const open = page.incidents.filter((i) => i.status !== "resolved");
@@ -377,9 +383,19 @@ function ServiceRow({ monitor }: { monitor: PublicStatusMonitor }) {
         ? "down"
         : monitor.slow
           ? "slow"
-          : "pending";
+          : monitor.status === "unknown"
+            ? "unknown"
+            : "pending";
   const label =
-    vis === "slow" ? "Degraded" : vis === "up" ? "Operational" : vis === "down" ? "Outage" : "Pending";
+    vis === "slow"
+      ? "Degraded"
+      : vis === "up"
+        ? "Operational"
+        : vis === "down"
+          ? "Outage"
+          : vis === "unknown"
+            ? "Unknown"
+            : "Pending";
   const days = monitor.days ?? [];
   // A young page has only a few days. Keep each day a day-sized bar instead of
   // stretching one day across the full width, and say how much history there is.
@@ -403,7 +419,7 @@ function ServiceRow({ monitor }: { monitor: PublicStatusMonitor }) {
             vis === "up" && "text-success",
             vis === "down" && "text-danger",
             vis === "slow" && "text-warning",
-            vis === "pending" && "text-muted-foreground",
+            (vis === "pending" || vis === "unknown") && "text-muted-foreground",
           )}
         >
           {label}

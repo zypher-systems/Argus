@@ -1011,6 +1011,7 @@
           "status"
         ],
         "summary": "Public status page as JSON",
+        "description": "overall is operational, degraded, down or unknown. A monitor's status is up, down, pending or unknown; unknown means it is overdue for a check.",
         "security": [],
         "responses": {
           "200": {
