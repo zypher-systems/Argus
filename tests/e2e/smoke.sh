@@ -412,15 +412,19 @@ expect_code 200 -b "$COOKIE" -X DELETE "$BASE/api/monitors/$ID"
 [ -n "$SP_ID" ] && expect_code 200 -b "$COOKIE" -X DELETE "$BASE/api/status-pages/$SP_ID"
 [ -n "$DRAFT_ID" ] && expect_code 200 -b "$COOKIE" -X DELETE "$BASE/api/status-pages/$DRAFT_ID"
 expect_code 200 -b "$COOKIE" "$BASE/api/users"
-expect_code 403 -b "$COOKIE" -H "Content-Type: application/json" \
+expect_code 201 -b "$COOKIE" -H "Content-Type: application/json" \
   -d '{"email":"ops@example.com","role":"operator","password":"abcdefgh"}' "$BASE/api/users"
-expect_code 403 -b "$COOKIE" "$BASE/api/sla"
-expect_code 403 -b "$COOKIE" "$BASE/api/audit"
+OPS_ID="$(sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p' /tmp/argus-smoke-body | head -n 1)"
+expect_code 200 -b "$COOKIE" -X DELETE "$BASE/api/users/$OPS_ID"
+expect_code 200 -b "$COOKIE" "$BASE/api/sla"
+expect_code 200 -b "$COOKIE" "$BASE/api/audit"
 expect_code 200 -b "$COOKIE" "$BASE/api/instance"
 expect_code 200 "$BASE/api/auth/oidc"
 expect_code 200 -b "$COOKIE" "$BASE/api/probe-nodes"
-expect_code 403 -b "$COOKIE" -H "Content-Type: application/json" \
+expect_code 201 -b "$COOKIE" -H "Content-Type: application/json" \
   -d '{"name":"smoke-east","region":"us-east"}' "$BASE/api/probe-nodes"
+NODE_ID="$(sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p' /tmp/argus-smoke-body | head -n 1)"
+expect_code 200 -b "$COOKIE" -X DELETE "$BASE/api/probe-nodes/$NODE_ID"
 
 expect_code 200 "$BASE/api/auth/hosted"
 grep -q '"hosted":false' /tmp/argus-smoke-body || {
