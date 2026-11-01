@@ -25,7 +25,7 @@ and not the example value. If the api container restarts, `docker compose logs a
 says which of the two to fix.
 
 `latest` is what `docker-compose.yml` pulls. To pin this version, change both
-image tags in that file from `latest` to `v2.16.0`.
+image tags in that file from `latest` to `v2.16.1`.
 
 ### From a checkout
 
@@ -505,7 +505,7 @@ fail; stay on Postgres 16.
 ## Upgrade
 
 1. Back up first. From the image install, `docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > argus.dump`. From a checkout, `make backup`.
-2. `docker compose pull && docker compose up -d`. A checkout that builds its own images uses `git pull` and `make up` instead. To stay on one version, set the image tags to that version (`v2.16.0`) before pulling.
+2. `docker compose pull && docker compose up -d`. A checkout that builds its own images uses `git pull` and `make up` instead. To stay on one version, set the image tags to that version (`v2.16.1`) before pulling.
 3. The api runs migrations on startup. `docker compose logs -f api` (or `make logs`) until `/api/health` returns `{"status":"ok"}`.
 4. If a migration fails, restore the dump from step 1 and send the log to
    support@zyphersystems.com.
