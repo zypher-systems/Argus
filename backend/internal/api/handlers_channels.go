@@ -15,6 +15,11 @@ import (
 	"argus/internal/store"
 )
 
+const (
+	maxChannels     = 50
+	tooManyChannels = "at most 50 notification channels"
+)
+
 type channelRequest struct {
 	Name   string   `json:"name"`
 	Type   string   `json:"type"`
@@ -153,8 +158,8 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "failed to list channels")
 		return
 	}
-	if len(existing) >= 50 {
-		writeErr(w, http.StatusBadRequest, "at most 50 notification channels")
+	if len(existing) >= maxChannels {
+		writeErr(w, http.StatusBadRequest, tooManyChannels)
 		return
 	}
 	if err := s.store.CreateChannel(r.Context(), &c); err != nil {

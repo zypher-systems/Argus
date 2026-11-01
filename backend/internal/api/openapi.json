@@ -1301,7 +1301,7 @@
         },
         "responses": {
           "200": {
-            "description": "Counts of imported and skipped monitors"
+            "description": "imported counts monitors, channels counts notification channels added by an Argus import, and skipped lists what was left out and why"
           },
           "400": {
             "description": "Unreadable file, or a missing or wrong passphrase"

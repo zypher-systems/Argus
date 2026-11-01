@@ -561,6 +561,7 @@ export interface LatencyPercentiles {
 
 export interface ImportResult {
   imported: number;
+  channels: number;
   skipped: { name: string; reason: string }[];
 }
 
