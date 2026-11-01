@@ -130,6 +130,16 @@ func TestCheckHTTPCompleteBodiesStayUp(t *testing.T) {
 	}
 }
 
+// A response still sending at the cap counts as up: Argus has read what it
+// reads, and following it to the end would fail any large file at the timeout.
+func TestCheckHTTPStreamPastTheCapStaysUp(t *testing.T) {
+	srv := stalledServer(t, strings.Repeat("x", maxBody*2))
+	m := store.Monitor{Type: "http", Target: srv.URL, Config: store.MonitorConfig{TimeoutSeconds: 1}}
+	if _, err := checkHTTP(context.Background(), m); err != nil {
+		t.Fatalf("stream past the cap: %v", err)
+	}
+}
+
 func TestTransactionFailsOnIncompleteBody(t *testing.T) {
 	const page = `{"token":"tok-123456`
 	for name, srv := range map[string]*httptest.Server{

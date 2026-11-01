@@ -80,7 +80,7 @@ Kuma backup. "Email me" appears once SMTP is set up under Settings → Alerts.
 | Type | Watches | Notes |
 | --- | --- | --- |
 | ICMP | A host answers ping | |
-| HTTP | A URL | Status, keyword, JSON path, auth, proxy. Every check opens a new connection, so latency includes connecting and TLS. A `Host` header is sent as the request's host. Redirects are followed unless the expected status is itself a redirect (301, 302…). A response that breaks off, or is still unfinished at the timeout, fails the check, so a stream that never ends needs a `HEAD` request |
+| HTTP | A URL | Status, keyword, JSON path, auth, proxy. Every check opens a new connection, so latency includes connecting and TLS. A `Host` header is sent as the request's host. Redirects are followed unless the expected status is itself a redirect (301, 302…). Argus reads up to 1 MiB of a response. One that breaks off, or is still under that and unfinished at the timeout, fails the check, so a slow stream that never ends needs a `HEAD` request |
 | TCP | A port accepts connections | |
 | DNS | A record resolves | A, AAAA, CNAME, MX, NS, TXT, with an expected answer (TXT matches a substring) |
 | TLS certificate | Certificate expiry | Warns once per expiry date, 14 days ahead unless the monitor sets its own window. Behind a pool whose machines hold different certificates, each is warned about once |
