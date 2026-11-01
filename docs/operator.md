@@ -25,7 +25,7 @@ and not the example value. If the api container restarts, `docker compose logs a
 says which of the two to fix.
 
 `latest` is what `docker-compose.yml` pulls. To pin this version, change both
-image tags in that file from `latest` to `v2.16.0`.
+image tags in that file from `latest` to `v2.16.1`.
 
 ### From a checkout
 
@@ -80,7 +80,7 @@ Kuma backup. "Email me" appears once SMTP is set up under Settings → Alerts.
 | Type | Watches | Notes |
 | --- | --- | --- |
 | ICMP | A host answers ping | |
-| HTTP | A URL | Status, keyword, JSON path, auth, proxy. Every check opens a new connection, so latency includes connecting and TLS. A `Host` header is sent as the request's host. Redirects are followed unless the expected status is itself a redirect (301, 302…) |
+| HTTP | A URL | Status, keyword, JSON path, auth, proxy. Every check opens a new connection, so latency includes connecting and TLS. A `Host` header is sent as the request's host. Redirects are followed unless the expected status is itself a redirect (301, 302…). Argus reads up to 1 MiB of a response. One that breaks off, or is still under that and unfinished at the timeout, fails the check, so a slow stream that never ends needs a `HEAD` request |
 | TCP | A port accepts connections | |
 | DNS | A record resolves | A, AAAA, CNAME, MX, NS, TXT, with an expected answer (TXT matches a substring) |
 | TLS certificate | Certificate expiry | Warns once per expiry date, 14 days ahead unless the monitor sets its own window. Behind a pool whose machines hold different certificates, each is warned about once |
@@ -298,6 +298,12 @@ Every published status page exposes:
 - `GET /api/status/<slug>/feed.xml` — incident history as RSS
 
 Badges take an optional `?label=`. They cache for a minute, the feed for five.
+
+A status page says a monitor is operational only while its checks are current.
+A monitor overdue for a check, by twice its interval plus 15 seconds, shows as
+**Unknown**, and the page and its badge say unknown instead of operational. So
+does a page with a monitor that has not been checked yet. A monitor that was
+down when its checks stopped keeps showing the outage.
 The Status pages screen has copy buttons for all three.
 
 ```markdown
@@ -475,6 +481,11 @@ webhook URLs. So:
   scrypt and AES-256-GCM. Importing needs the same passphrase. There is no
   recovery if it is lost.
 
+Importing restores the channels and puts them back on their monitors. A channel
+this Argus already has, with the same name, type and destination, is reused
+rather than added again. A channel that cannot be restored is listed as skipped,
+and a monitor left with no channel goes back to the default set, every channel.
+
 Over the API: `GET /api/export` for plain, `POST /api/export` with
 `{"passphrase": "…"}` for encrypted, and `POST /api/import` with
 `{"format": "argus", "data": <export>, "passphrase": "…"}`.
@@ -494,7 +505,7 @@ fail; stay on Postgres 16.
 ## Upgrade
 
 1. Back up first. From the image install, `docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > argus.dump`. From a checkout, `make backup`.
-2. `docker compose pull && docker compose up -d`. A checkout that builds its own images uses `git pull` and `make up` instead. To stay on one version, set the image tags to that version (`v2.16.0`) before pulling.
+2. `docker compose pull && docker compose up -d`. A checkout that builds its own images uses `git pull` and `make up` instead. To stay on one version, set the image tags to that version (`v2.16.1`) before pulling.
 3. The api runs migrations on startup. `docker compose logs -f api` (or `make logs`) until `/api/health` returns `{"status":"ok"}`.
 4. If a migration fails, restore the dump from step 1 and send the log to
    support@zyphersystems.com.

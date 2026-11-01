@@ -22,7 +22,9 @@ func (d *Dispatcher) NotifyIncidentAsync(inc store.Incident) {
 }
 
 func (d *Dispatcher) notifyIncident(ctx context.Context, inc store.Incident) {
-	if inc.MonitorID == nil {
+	// A private incident is kept off the status page, so it is kept out of
+	// what the page sends to its subscribers.
+	if !inc.Public || inc.MonitorID == nil {
 		return
 	}
 	subs, err := d.store.ConfirmedSubscribersForMonitor(ctx, *inc.MonitorID)

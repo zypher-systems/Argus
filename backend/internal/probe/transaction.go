@@ -256,7 +256,7 @@ func runStep(ctx context.Context, client *http.Client, i int, step store.Transac
 	out.Evidence.StatusCode = resp.StatusCode
 	out.Evidence.ContentType = resp.Header.Get("Content-Type")
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	respBody, readErr := readBody(resp.Body)
 	out.Evidence.BodySnippet = snippetBody(respBody, maxEvidenceBody)
 
 	if !statusOK(resp.StatusCode, step.ExpectStatus) {
@@ -264,6 +264,9 @@ func runStep(ctx context.Context, client *http.Client, i int, step store.Transac
 			return fmt.Errorf("status %d, expected %d", resp.StatusCode, step.ExpectStatus)
 		}
 		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	if readErr != nil {
+		return readErr
 	}
 	if kw := strings.TrimSpace(step.Keyword); kw != "" && method != http.MethodHead {
 		if !strings.Contains(string(respBody), kw) {

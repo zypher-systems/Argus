@@ -22,6 +22,17 @@ var userAgent = "Argus/" + version.Version
 
 const maxBody = 1 << 20
 
+// readBody reads a response up to maxBody and returns whatever arrived, along
+// with an error if the body broke off or stalled. Reaching maxBody is not an
+// error: the cap is ours, and the server was still sending.
+func readBody(r io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxBody))
+	if err != nil {
+		return body, fmt.Errorf("reading response body: %w", err)
+	}
+	return body, nil
+}
+
 func redirectLimit(_ *http.Request, via []*http.Request) error {
 	if len(via) >= 5 {
 		return fmt.Errorf("stopped after 5 redirects")
@@ -148,10 +159,15 @@ func checkHTTP(ctx context.Context, m store.Monitor) (CheckOutcome, error) {
 	out.Evidence.StatusCode = resp.StatusCode
 	out.Evidence.ContentType = resp.Header.Get("Content-Type")
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	body, readErr := readBody(resp.Body)
 	out.Evidence.BodySnippet = snippetBody(body, maxEvidenceBody)
 	if !statusOK(resp.StatusCode, m.Config.ExpectStatus) {
 		return out, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	// A broken response is a failure with any status, and the checks below
+	// cannot be trusted on part of a body.
+	if readErr != nil {
+		return out, readErr
 	}
 	if kw := strings.TrimSpace(m.Config.Keyword); kw != "" && method != http.MethodHead {
 		found := strings.Contains(string(body), kw)

@@ -60,6 +60,8 @@ export function MonitorStoreProvider({ children }: { children: ReactNode }) {
         };
       });
     });
+    // This series is the sparkline: the last 80 checks, not a day of them.
+    // uptime_24h stays as the server worked it out from all of the day's checks.
     setSeries((prev) => {
       const cur = prev[msg.monitor_id] ?? [];
       const next = [
@@ -73,16 +75,6 @@ export function MonitorStoreProvider({ children }: { children: ReactNode }) {
           total: 1,
         },
       ].slice(-80);
-      const ok = next.filter((p) => p.failures === 0).length;
-      const uptime = next.length ? (100 * ok) / next.length : null;
-      setMonitors((list) => {
-        if (!list) return list;
-        return list.map((m) =>
-          m.id === msg.monitor_id
-            ? { ...m, state: { ...m.state, uptime_24h: uptime } }
-            : m,
-        );
-      });
       return { ...prev, [msg.monitor_id]: next };
     });
   }, []);

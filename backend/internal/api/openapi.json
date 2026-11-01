@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Argus API",
-    "version": "2.16.0",
+    "version": "2.16.1",
     "description": "Self-hosted uptime monitoring. Automation uses an API token (Settings \u2192 Access \u2192 API tokens) sent as `Authorization: Bearer <token>` or `X-Api-Token: <token>`. The browser UI uses a session cookie against the same endpoints.",
     "license": {
       "name": "MIT"
@@ -1011,6 +1011,7 @@
           "status"
         ],
         "summary": "Public status page as JSON",
+        "description": "overall is operational, degraded, down or unknown. A monitor's status is up, down, pending or unknown; unknown means it is overdue for a check.",
         "security": [],
         "responses": {
           "200": {
@@ -1300,7 +1301,7 @@
         },
         "responses": {
           "200": {
-            "description": "Counts of imported and skipped monitors"
+            "description": "imported counts monitors, channels counts notification channels added by an Argus import, and skipped lists what was left out and why"
           },
           "400": {
             "description": "Unreadable file, or a missing or wrong passphrase"

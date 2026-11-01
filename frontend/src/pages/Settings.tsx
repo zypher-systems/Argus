@@ -1008,8 +1008,11 @@ export function Settings() {
                     passphrase: data.format === "argus-encrypted" ? importPassphrase : undefined,
                   });
                   setImportPassphrase("");
+                  const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+                  const channels = res.channels > 0 ? ` and ${count(res.channels, "channel")}` : "";
+                  const reasons = res.skipped.map((s) => [s.name, s.reason].filter(Boolean).join(": "));
                   setImportResult(
-                    `Imported ${res.imported}. Skipped ${res.skipped.length}.`,
+                    `Imported ${count(res.imported, "monitor")}${channels}. Skipped ${res.skipped.length}${reasons.length ? ` (${reasons.join("; ")})` : ""}.`,
                   );
                   toast("success", `imported ${res.imported} monitors`);
                 } catch (err) {
