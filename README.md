@@ -3,7 +3,7 @@
 Self-hosted uptime monitoring. It checks websites, APIs, hosts, DNS, certificates, domains, mail servers, and databases, sends alerts through the channels a team already uses, and publishes status pages. A status page shows names only. Probe targets stay private.
 
 ![stack](https://img.shields.io/badge/stack-Go%2BReact%2BPostgres%2BDocker-6366f1)
-![version](https://img.shields.io/badge/version-2.16.0-1f5bd8)
+![version](https://img.shields.io/badge/version-2.16.1-1f5bd8)
 ![license](https://img.shields.io/badge/license-MIT-1f5bd8)
 
 ![The Argus overview: six monitors up, one down, and a fleet latency chart](docs/readme/overview.png)
@@ -41,7 +41,7 @@ Update with:
 docker compose pull && docker compose up -d
 ```
 
-`latest` moves when a new image is published. To stay on this version, change both image tags in `docker-compose.yml` from `latest` to `v2.16.0`.
+`latest` moves when a new image is published. To stay on this version, change both image tags in `docker-compose.yml` from `latest` to `v2.16.1`.
 
 Stop the stack with `docker compose down`. That keeps the volume. Do not pass `--volumes` unless you mean to delete the database.
 
